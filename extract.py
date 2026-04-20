@@ -21,6 +21,11 @@ def get_access_token():
     )
     return r.json()["access_token"]
 
+def get_user_id(access_token):
+    r = requests.get("https://api.spotify.com/v1/me",
+        headers={"Authorization": f"Bearer {access_token}"}
+    )
+    return r.json().get("id")
 
 def get_recently_played(access_token):
     r = requests.get("https://api.spotify.com/v1/me/player/recently-played",
@@ -43,6 +48,27 @@ def get_artist_data(access_token, artist_ids):
             print(f"failed for {artist_id}: {r.status_code}")
     return artists
 
+def get_playlists(access_token):
+    r = requests.get("https://api.spotify.com/v1/me/playlists",
+        headers={"Authorization": f"Bearer {access_token}"},
+        params={"limit": 50}
+    )
+    return r.json().get("items", [])
+
+def get_playlist_tracks(access_token, playlist_id):
+    tracks = []
+    url = f"https://api.spotify.com/v1/playlists/{playlist_id}/items"
+    while url:
+        r = requests.get(url,
+            headers={"Authorization": f"Bearer {access_token}"},
+            params={"limit": 100}
+        )
+        print(f"playlist tracks status: {r.status_code}")
+        print(f"first item: {r.json().get('items', [])[0] if r.json().get('items') else 'empty'}")
+        data = r.json()
+        tracks.extend(data.get("items", []))
+        url = data.get("next")
+    return tracks
 
 # --- run ---
 token = get_access_token()
@@ -83,6 +109,60 @@ artists_df = pd.DataFrame([{
 # join artist data onto plays
 df = df.merge(artists_df, left_on="primary_artist_id",
                           right_on="artist_id", how="left")
+
+# --- playlists ---
+playlists_raw = get_playlists(token)
+
+playlist_records = []
+user_id = get_user_id(token)
+print(f"your user id: {user_id}")
+
+for pl in playlists_raw:
+    # only process playlists you own
+    owner_id = pl.get("owner", {}).get("id")
+    if owner_id != user_id:
+        print(f"skipping {pl.get('name')} — owned by {owner_id}")
+        continue
+
+    playlist_id   = pl.get("id")
+    playlist_name = pl.get("name")
+    total_tracks  = pl.get("tracks", {}).get("total")
+
+    print(f"fetching: {playlist_name}")
+    pl_tracks = get_playlist_tracks(token, playlist_id)
+
+    for item in pl_tracks:
+        track = item.get("item")
+        if not track or not track.get("id"):
+            continue
+        artists = track.get("artists", [])
+        playlist_records.append({
+            "playlist_id":           playlist_id,
+            "playlist_name":         playlist_name,
+            "playlist_total_tracks": total_tracks,
+            "added_at":              item.get("added_at") or None,
+            "track_id":              track.get("id"),
+            "track_name":            track.get("name"),
+            "duration_s":            round(track.get("duration_ms", 0) / 1000, 1),
+            "popularity":            track.get("popularity"),
+            "album_name":            track.get("album", {}).get("name"),
+            "release_date":          track.get("album", {}).get("release_date"),
+            "artist_ids":            ",".join([a["id"] for a in artists]),
+            "artist_names":          ",".join([a["name"] for a in artists]),
+            "primary_artist_id":     artists[0]["id"] if artists else None,
+        })
+
+
+playlists_df = pd.DataFrame(playlist_records)
+print(playlists_df.columns.tolist())
+print(len(playlist_records))
+
+# fix types
+playlists_df["added_at"] = pd.to_datetime(playlists_df["added_at"], utc=True, errors="coerce")
+playlists_df["popularity"]  = pd.to_numeric(playlists_df["popularity"], errors="coerce")
+
+print(f"playlist tracks shape: {playlists_df.shape}")
+print(playlists_df.head())
 
 '''
 Transformations (formatting for postgres)
@@ -131,5 +211,6 @@ df = df.drop(columns=["duration_ms"])
 
 # load to postgres — if table exists, append new rows
 df.to_sql("plays", engine, if_exists="append", index=False)
+playlists_df.to_sql("playlist_tracks", engine, if_exists="append", index=False)
 
 print("loaded to postgres successfully")
