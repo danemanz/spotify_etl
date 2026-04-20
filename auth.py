@@ -11,14 +11,14 @@ load_dotenv()
 CLIENT_ID     = os.getenv("SPOTIFY_CLIENT_ID")
 CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
 REDIRECT_URI  = os.getenv("SPOTIFY_REDIRECT_URI")
-SCOPE         = "user-read-recently-played user-top-read"
-
+SCOPE = "user-read-recently-played user-top-read user-library-read playlist-read-private playlist-read-collaborative"
 # Step 1 — open the Spotify login page in your browser
 auth_url = "https://accounts.spotify.com/authorize?" + urllib.parse.urlencode({
     "client_id":     CLIENT_ID,
     "response_type": "code",
     "redirect_uri":  REDIRECT_URI,
     "scope":         SCOPE,
+    "show_dialog":   "true",  # add this line
 })
 print("Opening Spotify login in your browser...")
 webbrowser.open(auth_url)
