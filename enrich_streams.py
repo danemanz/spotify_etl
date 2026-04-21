@@ -62,10 +62,23 @@ def get_existing_stream_track_ids():
 # --- pull tracks from playlists with <= 30 songs ---
 with engine.connect() as conn:
     result = conn.execute(text("""
-        SELECT DISTINCT track_id, track_name, artist_names
+        (SELECT DISTINCT track_id, track_name, artist_names
         FROM plays
         WHERE track_id IS NOT NULL
-        ORDER BY track_id
+        ORDER BY track_id)
+        
+        union                    
+                            
+        (SELECT DISTINCT track_id, track_name, artist_names
+        FROM playlist_tracks
+        WHERE track_id IS NOT NULL
+        AND playlist_id IN (
+            SELECT playlist_id
+            FROM playlist_tracks
+            GROUP BY playlist_id
+            HAVING COUNT(track_id) != 100
+        )
+        ORDER BY track_id)
     """))
     rows = result.fetchall()
 
