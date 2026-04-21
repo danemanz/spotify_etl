@@ -1,8 +1,5 @@
 import requests
 import json
-
-SC_APP_ID  = "ZDANEMAN1-API_4842F8D0"
-SC_API_KEY = "a3ee22ad132a8790"
 import os
 import time
 import requests
@@ -12,6 +9,9 @@ from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
 
 load_dotenv()
+
+SC_APP_ID  = os.getenv("SOUNDCHARTS_APP_ID")
+SC_API_KEY = os.getenv("SOUNDCHARTS_API_KEY")
 
 engine = create_engine(
     f"postgresql+psycopg2://{os.getenv('POSTGRES_USER')}:{os.getenv('POSTGRES_PASSWORD')}"
@@ -63,7 +63,7 @@ def get_existing_stream_track_ids():
 with engine.connect() as conn:
     result = conn.execute(text("""
         (SELECT DISTINCT track_id, track_name, artist_names
-        FROM plays
+        FROM plays 
         WHERE track_id IS NOT NULL
         ORDER BY track_id)
         
