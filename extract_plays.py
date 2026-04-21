@@ -102,63 +102,44 @@ records = []
 for item in items:
     track   = item["track"]
     artists = track.get("artists", [])
+    
+    # We build the record with ONLY what we need for the 'plays' table
     records.append({
         "played_at":         item["played_at"],
         "track_id":          track.get("id"),
         "track_name":        track.get("name"),
-        "duration_ms":       track.get("duration_ms"),
+        "duration_s":        round(track.get("duration_ms", 0) / 1000, 1),
         "album_name":        track.get("album", {}).get("name"),
         "release_date":      track.get("album", {}).get("release_date"),
-        "artist_ids":        [a["id"] for a in artists],
-        "artist_names":      [a["name"] for a in artists],
+        "artist_ids":        ",".join([a["id"] for a in artists]),
+        "artist_names":      ",".join([a["name"] for a in artists]),
         "primary_artist_id": artists[0]["id"] if artists else None,
     })
 
 df = pd.DataFrame(records)
-
-# fetch artist data
-all_artist_ids = list(set(aid for ids in df["artist_ids"] for aid in ids))
-print(f"fetching {len(all_artist_ids)} artists...")
-artists_raw = get_artist_data(token, all_artist_ids)
-
-artists_df = pd.DataFrame([{
-    "artist_id":   a.get("id"),
-    "artist_name": a.get("name"),
-    "artist_genres": ",".join(a.get("genres", [])),
-} for a in artists_raw if a])
-
-# join artist data
-df = df.merge(artists_df, left_on="primary_artist_id",
-                          right_on="artist_id", how="left")
-
-# fix types
-df["played_at"]    = pd.to_datetime(df["played_at"], utc=True)
-df["duration_s"]   = (df["duration_ms"] / 1000).round(1)
-df["artist_ids"]   = df["artist_ids"].apply(lambda x: ",".join(x) if x else None)
-df["artist_names"] = df["artist_names"].apply(lambda x: ",".join(x) if x else None)
-df = df.drop(columns=["duration_ms", "artist_id"], errors="ignore")
+df["played_at"] = pd.to_datetime(df["played_at"], utc=True)
 
 '''
-LOAD — ignore duplicates via on_conflict_do_nothing
+LOAD
 '''
-from sqlalchemy.dialects.postgresql import insert
+# Upload to staging (this table is temporary and matches the DF structure)
+df.to_sql("plays_staging", engine, if_exists="replace", index=False)
 
-records_to_insert = df.to_dict(orient="records")
 with engine.connect() as conn:
-    for record in records_to_insert:
-        stmt = insert(text("plays")).values(**record)
-        # if played_at + track_id already exists, skip it
-        conn.execute(
-            text("""
-                INSERT INTO plays ({cols})
-                VALUES ({vals})
-                ON CONFLICT (played_at, track_id) DO NOTHING
-            """.format(
-                cols=", ".join(record.keys()),
-                vals=", ".join([f":{k}" for k in record.keys()])
-            )),
-            record
+    # Explicitly mapping columns from staging to main table
+    # This ensures that even if staging has "extra" columns, the INSERT won't crash
+    conn.execute(text("""
+        INSERT INTO plays (
+            played_at, track_id, track_name, duration_s, 
+            album_name, release_date, artist_ids, artist_names, primary_artist_id
         )
+        SELECT 
+            played_at, track_id, track_name, duration_s, 
+            album_name, release_date, artist_ids, artist_names, primary_artist_id
+        FROM plays_staging
+        ON CONFLICT (played_at, track_id) DO NOTHING
+    """))
+    conn.execute(text("DROP TABLE plays_staging"))
     conn.commit()
 
-print(f"done — {len(records_to_insert)} plays processed")
+print(f"done — {len(df)} plays processed")
