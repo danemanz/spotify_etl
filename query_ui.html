@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Spotify Data Explorer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #121212;
+      color: #e0e0e0;
+      font-family: 'Inter', sans-serif;
+      min-height: 100vh;
+      padding: 0 0 60px;
+    }
+
+    header {
+      background: #0a0a0a;
+      border-bottom: 1px solid #282828;
+      padding: 20px 0;
+      margin-bottom: 40px;
+    }
+
+    header h1 {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 24px;
+      color: #1DB954;
+      font-size: 1.6rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    textarea {
+      width: 100%;
+      rows: 3;
+      background: #1e1e1e;
+      border: 1px solid #333;
+      border-radius: 8px;
+      color: #f0f0f0;
+      font-family: 'Inter', sans-serif;
+      font-size: 1rem;
+      padding: 14px 16px;
+      resize: vertical;
+      outline: none;
+      transition: border-color 0.15s;
+      min-height: 80px;
+    }
+
+    textarea:focus { border-color: #1DB954; }
+    textarea::placeholder { color: #666; }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .chip {
+      background: #1e1e1e;
+      border: 1px solid #333;
+      border-radius: 20px;
+      color: #b3b3b3;
+      cursor: pointer;
+      font-family: 'Inter', sans-serif;
+      font-size: 0.78rem;
+      padding: 6px 14px;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+      white-space: nowrap;
+    }
+
+    .chip:hover {
+      background: #2a2a2a;
+      border-color: #1DB954;
+      color: #1DB954;
+    }
+
+    button#ask-btn {
+      margin-top: 16px;
+      width: 100%;
+      background: #1DB954;
+      border: none;
+      border-radius: 8px;
+      color: #000;
+      cursor: pointer;
+      font-family: 'Inter', sans-serif;
+      font-size: 1rem;
+      font-weight: 600;
+      padding: 14px;
+      transition: background 0.15s, transform 0.1s;
+    }
+
+    button#ask-btn:hover { background: #1ed760; }
+    button#ask-btn:active { transform: scale(0.99); }
+    button#ask-btn:disabled { background: #145c30; color: #444; cursor: not-allowed; }
+
+    /* Spinner */
+    #spinner {
+      display: none;
+      margin: 28px auto 0;
+      width: 36px;
+      height: 36px;
+      border: 3px solid #282828;
+      border-top-color: #1DB954;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* SQL block */
+    #sql-section {
+      display: none;
+      margin-top: 32px;
+    }
+
+    .section-label {
+      color: #888;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    pre#sql-block {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+      color: #1DB954;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 0.85rem;
+      overflow-x: auto;
+      padding: 16px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    /* Results */
+    #results-section {
+      display: none;
+      margin-top: 28px;
+    }
+
+    #row-count {
+      color: #888;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+    }
+
+    .table-wrapper {
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+      max-height: 520px;
+      overflow: auto;
+    }
+
+    table {
+      border-collapse: collapse;
+      min-width: 100%;
+    }
+
+    thead th {
+      background: #1a1a1a;
+      border-bottom: 1px solid #333;
+      color: #1DB954;
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      padding: 10px 14px;
+      position: sticky;
+      text-align: left;
+      text-transform: uppercase;
+      top: 0;
+      white-space: nowrap;
+    }
+
+    tbody tr:nth-child(odd)  { background: #161616; }
+    tbody tr:nth-child(even) { background: #1a1a1a; }
+    tbody tr:hover { background: #222; }
+
+    tbody td {
+      border-bottom: 1px solid #222;
+      color: #d0d0d0;
+      font-size: 0.88rem;
+      max-width: 340px;
+      overflow: hidden;
+      padding: 9px 14px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* Error */
+    #error-section {
+      display: none;
+      margin-top: 28px;
+    }
+
+    #error-box {
+      background: #2d1515;
+      border: 1px solid #6b2020;
+      border-radius: 8px;
+      color: #f08080;
+      font-size: 0.9rem;
+      padding: 14px 16px;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Spotify Data Explorer</h1>
+</header>
+
+<div class="container">
+  <textarea id="question" placeholder="Ask anything about your Spotify listening history…" rows="3"></textarea>
+
+  <div class="chips">
+    <span class="chip">What are my top 10 most played artists?</span>
+    <span class="chip">How many hours have I listened to music total?</span>
+    <span class="chip">What was the first song I ever listened to?</span>
+    <span class="chip">Which playlist has the most tracks?</span>
+    <span class="chip">What are my most skipped songs?</span>
+    <span class="chip">Which songs in my plays have the highest global stream count?</span>
+    <span class="chip">What genre do I listen to most?</span>
+    <span class="chip">How many unique artists have I listened to?</span>
+  </div>
+
+  <button id="ask-btn">Ask</button>
+
+  <div id="spinner"></div>
+
+  <div id="sql-section">
+    <div class="section-label">Generated SQL</div>
+    <pre id="sql-block"></pre>
+  </div>
+
+  <div id="results-section">
+    <div id="row-count"></div>
+    <div class="table-wrapper">
+      <table id="results-table">
+        <thead id="results-head"></thead>
+        <tbody id="results-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="error-section">
+    <div id="error-box"></div>
+  </div>
+</div>
+
+<script>
+  const questionEl   = document.getElementById("question");
+  const askBtn       = document.getElementById("ask-btn");
+  const spinner      = document.getElementById("spinner");
+  const sqlSection   = document.getElementById("sql-section");
+  const sqlBlock     = document.getElementById("sql-block");
+  const resultsSection = document.getElementById("results-section");
+  const rowCount     = document.getElementById("row-count");
+  const resultsHead  = document.getElementById("results-head");
+  const resultsBody  = document.getElementById("results-body");
+  const errorSection = document.getElementById("error-section");
+  const errorBox     = document.getElementById("error-box");
+
+  document.querySelectorAll(".chip").forEach(chip => {
+    chip.addEventListener("click", () => {
+      questionEl.value = chip.textContent;
+      questionEl.focus();
+    });
+  });
+
+  function clearResults() {
+    sqlSection.style.display    = "none";
+    resultsSection.style.display = "none";
+    errorSection.style.display  = "none";
+    sqlBlock.textContent        = "";
+    resultsHead.innerHTML       = "";
+    resultsBody.innerHTML       = "";
+    rowCount.textContent        = "";
+    errorBox.textContent        = "";
+  }
+
+  function showError(msg) {
+    errorBox.textContent        = msg;
+    errorSection.style.display  = "block";
+  }
+
+  askBtn.addEventListener("click", async () => {
+    const question = questionEl.value.trim();
+    if (!question) return;
+
+    clearResults();
+    askBtn.disabled    = true;
+    spinner.style.display = "block";
+
+    try {
+      const response = await fetch("http://localhost:5001/query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || data.error) {
+        showError(data.error || "Unknown server error.");
+        return;
+      }
+
+      // Show SQL
+      sqlBlock.textContent     = data.sql;
+      sqlSection.style.display = "block";
+
+      // Build table
+      const { columns, rows } = data;
+      rowCount.textContent = `${rows.length} result${rows.length !== 1 ? "s" : ""}`;
+
+      const headRow = document.createElement("tr");
+      columns.forEach(col => {
+        const th = document.createElement("th");
+        th.textContent = col;
+        headRow.appendChild(th);
+      });
+      resultsHead.appendChild(headRow);
+
+      rows.forEach(row => {
+        const tr = document.createElement("tr");
+        row.forEach(val => {
+          const td = document.createElement("td");
+          td.textContent = val === null ? "NULL" : String(val);
+          td.title       = val === null ? "NULL" : String(val);
+          tr.appendChild(td);
+        });
+        resultsBody.appendChild(tr);
+      });
+
+      resultsSection.style.display = "block";
+
+    } catch {
+      showError("Could not connect to query server. Make sure query_server.py is running.");
+    } finally {
+      spinner.style.display = "none";
+      askBtn.disabled       = false;
+    }
+  });
+
+  questionEl.addEventListener("keydown", e => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) askBtn.click();
+  });
+</script>
+</body>
+</html>

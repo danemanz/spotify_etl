@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(python3 *)",
-      "Bash(python *)"
+      "Bash(python *)",
+      "Bash(\"C:\\\\Users\\\\zacha\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python314\\\\python.exe\" -c \"import flask, flask_cors, sqlalchemy, requests, dotenv; print\\('all packages ok'\\)\")",
+      "Bash(C:\\\\Users\\\\zacha\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python314\\\\python.exe *)"
     ]
   }
 }
