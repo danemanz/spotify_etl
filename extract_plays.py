@@ -5,8 +5,7 @@ import base64
 import pandas as pd
 from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
-
-load_dotenv()
+load_dotenv(r"C:\Users\zacha\Documents\My Code\spotify-etl\.env")
 
 CLIENT_ID     = os.getenv("SPOTIFY_CLIENT_ID")
 CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
@@ -64,12 +63,9 @@ def get_recently_played(access_token, after_ms=None):
 def get_last_played_at():
     try:
         with engine.connect() as conn:
-            result = conn.execute(text(
-                "SELECT MAX(played_at) FROM plays"
-            ))
+            result = conn.execute(text("SELECT MAX(played_at) FROM plays"))
             val = result.fetchone()[0]
             if val:
-                # convert to unix milliseconds for the Spotify cursor
                 return int(val.timestamp() * 1000)
     except Exception:
         pass
@@ -80,7 +76,6 @@ RUN
 '''
 token = get_access_token()
 
-# get cursor — only fetch plays after the last one we stored
 after_ms = get_last_played_at()
 if after_ms:
     print(f"fetching plays after last stored play...")
@@ -102,40 +97,72 @@ records = []
 for item in items:
     track   = item["track"]
     artists = track.get("artists", [])
-    
-    # We build the record with ONLY what we need for the 'plays' table
     records.append({
         "played_at":         item["played_at"],
         "track_id":          track.get("id"),
         "track_name":        track.get("name"),
-        "duration_s":        round(track.get("duration_ms", 0) / 1000, 1),
         "album_name":        track.get("album", {}).get("name"),
         "release_date":      track.get("album", {}).get("release_date"),
         "artist_ids":        ",".join([a["id"] for a in artists]),
         "artist_names":      ",".join([a["name"] for a in artists]),
         "primary_artist_id": artists[0]["id"] if artists else None,
+        "artist_name":       artists[0]["name"] if artists else None,
+        "duration_s":        round(track.get("duration_ms", 0) / 1000, 1),
+        "ms_played":         None,
+        "platform":          None,
+        "conn_country":      None,
     })
 
 df = pd.DataFrame(records)
 df["played_at"] = pd.to_datetime(df["played_at"], utc=True)
 
+# Fetch genres for all primary artists
+primary_ids = [r["primary_artist_id"] for r in records if r["primary_artist_id"]]
+artist_genre_map = {}
+if primary_ids:
+    artist_data = get_artist_data(token, primary_ids)
+    for a in artist_data:
+        artist_genre_map[a["id"]] = ",".join(a.get("genres", []))
+
+df["artist_genres"] = df["primary_artist_id"].map(artist_genre_map)
+
 '''
 LOAD
 '''
-# Upload to staging (this table is temporary and matches the DF structure)
-df.to_sql("plays_staging", engine, if_exists="replace", index=False)
-
 with engine.connect() as conn:
-    # Explicitly mapping columns from staging to main table
-    # This ensures that even if staging has "extra" columns, the INSERT won't crash
+    df.to_sql("plays_staging", conn, if_exists="replace", index=False)
     conn.execute(text("""
         INSERT INTO plays (
-            played_at, track_id, track_name, duration_s, 
-            album_name, release_date, artist_ids, artist_names, primary_artist_id
+            played_at,
+            track_id,
+            track_name,
+            album_name,
+            release_date,
+            artist_ids,
+            artist_names,
+            primary_artist_id,
+            artist_name,
+            artist_genres,
+            duration_s,
+            ms_played,
+            platform,
+            conn_country
         )
-        SELECT 
-            played_at, track_id, track_name, duration_s, 
-            album_name, release_date, artist_ids, artist_names, primary_artist_id
+        SELECT
+            played_at,
+            track_id,
+            track_name,
+            album_name,
+            release_date,
+            artist_ids,
+            artist_names,
+            primary_artist_id,
+            artist_name,
+            artist_genres,
+            duration_s,
+            ms_played::integer,
+            platform,
+            conn_country
         FROM plays_staging
         ON CONFLICT (played_at, track_id) DO NOTHING
     """))

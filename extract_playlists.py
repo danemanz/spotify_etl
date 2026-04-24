@@ -4,9 +4,7 @@ import base64
 import pandas as pd
 from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
-
-load_dotenv()
-
+load_dotenv(r"C:\Users\zacha\Documents\My Code\spotify-etl\.env")
 # Setup
 CLIENT_ID     = os.getenv("SPOTIFY_CLIENT_ID")
 CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
